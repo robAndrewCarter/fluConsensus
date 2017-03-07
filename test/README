@@ -1,0 +1,4 @@
+For simple testing purposes, the test_na_ref.fa has the following edits to convert it to test_na_variant_seq.fa: T280G, C560T, T840A
+
+The following was executed to sample from the edited test_na_variant_seq.fa sequence in an effort to correct the edited sequence into the original sequence in test_na_ref.fa:
+wgsim -e 0 -d 300 -N 50 -r 0 -R 0 test_na_variant_seq.fa test_na_variant_seq_1.fastq test_na_variant_seq_2.fastq
