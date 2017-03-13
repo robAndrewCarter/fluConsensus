@@ -1,4 +1,3 @@
 {
-  "test/run_test.py::test_alignment_and_variant_identification": true, 
-  "test/run_test.py::test_edit_sequence": true
+  "test/run_test.py": true
 }

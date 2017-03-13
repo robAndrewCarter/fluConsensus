@@ -1,10 +1,11 @@
-import os, tempfile, sys, subprocess
+import os, tempfile, sys, subprocess, re    
 from fluConsensus import run_settings
 from fluConsensus.utils import binner
 import pandas as pd
 import pysam
 import numpy as np
 from Bio import SeqIO, SeqRecord, Seq
+import logging
 
 
 #Required functions for python script:
@@ -122,6 +123,67 @@ def create_reference_file_from_accessions(accessions_list, sql_database):
     '''
     pass
 
+
+def get_lowercase_seq_coverage(bam_filename, fasta_filename, min_coverage = None):
+    ''' 
+    This function reads a bam_filename bam and the corresponding fasta_filename fasta file.
+    It converts the sequences from the FASTA file to a combination of uppercase and lowercase characters.
+    Lowercase characters are placed wherever the coverage of the corresponding base is less than min_coverage.
+    Uppercase characters are placed at all other character positions.
+
+    INPUT:
+
+    bam_filename: a bam filename that will be used to extract all variable
+    positions
+
+    fasta_filename: a fasta filename containing the reference sequences from
+    bam_filename. This has to be included because bam files do not store the
+    reference sequences.
+
+    min_coverage: the minimum coverage of a position  in order for it to be considered covered.
+    if None, then all positions are considered covered
+    
+    RETURNS:
+
+    a dict mapping each sequence name to a seqrecord of the corresponding sequence.  
+    The Seq object in the SeqRecord is converted to the upper/lowercase.
+    '''
+
+    if not os.path.exists(bam_filename):
+        sys.exit("Bam file {} does not exist".format(bam_filename))
+    if not os.path.exists(fasta_filename):
+        sys.exit("Fasta file {} does not exist".format(fasta_filename))
+    if min_coverage == None:
+        min_coverage = 0
+    try:
+        bam_obj = pysam.Samfile(bam_filename, 'rb')
+    except Exception:
+        sys.exit("Could not load bam file {}".format(bam_filename))
+    
+    ref_name_to_length_dict = dict(zip(bam_obj.references, bam_obj.lengths))
+
+    seg_to_seq_string_dict = {}
+    try:
+        for _seqrec in SeqIO.parse(fasta_filename, "fasta"):
+            seg_to_seq_string_dict[_seqrec.id] = str(_seqrec.seq)
+    except Exception:
+        sys.exit("Could not parse " + fasta_filename)
+
+    seqrec_list = []
+    for _refname in seg_to_seq_string_dict.keys():
+        tolower_inds_list = []
+        counts = bam_obj.count_coverage(reference = _refname, start = 0, end = ref_name_to_length_dict[_refname])
+        cov_array = np.asarray(counts)
+        seq_base_array = list(seg_to_seq_string_dict[_refname])
+        for _i in range(0,cov_array.shape[1]):
+            if(sum(cov_array[:,_i]) < min_coverage):
+                tolower_inds_list.append(_i)
+        for _ind in tolower_inds_list:
+            seq_base_array[_ind] = seq_base_array[_ind].lower()
+        seqrec_list.append(SeqRecord.SeqRecord(seq = Seq.Seq("".join(seq_base_array)), id = _refname))
+    return seqrec_list
+    
+
 def get_variants_from_bam(bam_filename, fasta_filename, threshold = None, min_coverage = None):
     '''
     This function reads a bam and gets the variants at each site that are
@@ -202,13 +264,79 @@ def get_variants_from_bam(bam_filename, fasta_filename, threshold = None, min_co
                 continue
             else:
                 print _pos
-                base_freq = temp_array[max_args_inds]/sum(temp_array)
+                base_freq = float(temp_array[max_args_inds])/sum(temp_array)
                 if base_freq >= threshold:
                     array_of_pos_to_change.append([_ref_name, _pos, ind_to_base_array[base_counts_and_ref_ind_array[4,_pos]], ind_to_base_array[max_args_inds]])
     var_df = pd.DataFrame(array_of_pos_to_change, columns = ['reference', 'position', 'ref_base', 'var_base'])
-    print var_df
+    var_df.to_csv(os.path.join(run_settings.global_args['temp_dir'], re.sub("\.[^.]+$", "", bam_filename) + "_variants.tsv"), sep = "\t")
     return(var_df)
-	
+
+def get_bam_stats(bam_filename, fasta_filename, min_coverage = None):
+    '''
+    This function compiles a list of statistics for a bam file.
+    Currently, it reports the fraction of each reference covered at or above min_coverage,
+    the mean read coverage across each segment, the mean read coverage across the covered 
+    portion of each reference (bases with at least min_coverage coverage)
+
+    INPUT
+
+    bam_filename: the name of the bam file to generate stats from
+
+    fasta_filename: a fasta filename containing the reference sequences from
+    bam_filename. This has to be included because bam files do not store the
+    reference sequences.
+
+    min_coverage: the minimum coverage required for a base to eb considered covered. 
+    If None, then the global min_coverage is used
+
+    RETURNS
+
+    A dataframe containing the following rows:
+        *ref, the reference name form the bam
+        *pos, The nucleotide position of the ref
+        *A, the A count at pos
+        *C, the C count at pos
+        *G, the G count at pos
+        *T, the T count at pos
+        *cov, the total coverage at pos
+
+    '''
+
+    #Make sure bam file exists
+    if not os.path.exists(bam_filename):
+        sys.exit("Bam file {} does not exist".format(bam_filename))
+    if not os.path.exists(fasta_filename):
+        sys.exit("Fasta file {} does not exist".format(fasta_filename))
+    try:
+        bam_obj = pysam.Samfile(bam_filename, 'rb')
+    except Exception:
+        sys.exit("Could not load bam file {}".format(bam_filename))
+
+    ref_name_to_length_dict = dict(zip(bam_obj.references, bam_obj.lengths))
+    
+    seg_to_seq_string_dict = {}
+    for _seqrec in SeqIO.parse(fasta_filename, "fasta"):
+        seg_to_seq_string_dict[_seqrec.id] = str(_seqrec.seq)
+
+    ref_cov_df_list = []
+    ref_stats_list = []
+    for _ref_name, _ref_length in ref_name_to_length_dict.iteritems():
+        base_freqs_array = np.array([list(_i) for _i in
+                                  bam_obj.count_coverage(reference = _ref_name,
+                                                         start = 0, end =
+                                                         _ref_length)])
+        cov_df = pd.DataFrame(base_freqs_array.T, columns = ['A', 'C', 'G', 'T'])
+        cov_df['cov'] = cov_df.apply(lambda x: sum(x.iloc[[0,1,2,3]]), axis = 1)
+        cov_df['ref'] = _ref_name
+        cov_df['pos'] = range(0, ref_name_to_length_dict[_ref_name])
+        covered_mean_cov = cov_df['cov'][cov_df['cov'] >= min_coverage].mean()
+        mean_cov = cov_df['cov'].mean()
+        cov_pct = (cov_df['cov'] >= min_coverage).mean()
+        ref_cov_df_list.append(cov_df)
+        ref_stats_list.append([_ref_name, cov_pct, mean_cov, covered_mean_cov])
+    cov_df = pd.concat(ref_cov_df_list, axis = 0)
+    stats_df = pd.DataFrame(ref_stats_list, columns = ['ref', 'cov_pct', 'mean_cov', 'covered_mean_cov'])
+    return(cov_df, stats_df) 
 
 def edit_reference_sequences(reference_fasta_filename, edits_df):
     '''
@@ -217,7 +345,7 @@ def edit_reference_sequences(reference_fasta_filename, edits_df):
     then returns its filename.
 
     INPUT:
-    
+
     reference_fasta_filename: a filename of a reference fasta file
     fcontaining the references from the bam file from which  the edit_df was
     derived.
@@ -267,7 +395,6 @@ def edit_reference_sequences(reference_fasta_filename, edits_df):
         sys.exit("Could not write sequences to file {}".format(edited_fasta_tempfile.name))
     edited_fasta_tempfile.close
     return(edited_fasta_tempfile.name)
-        
         
 
 def ensure_indexed_reference_file(fasta_filename):
