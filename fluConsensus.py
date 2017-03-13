@@ -58,7 +58,7 @@ aligned_bam_filename = None
 target_ref_filename = run_settings.global_args['reference_filename']
 
 #Iteratively align and correct until no further improvement
-while(another_iteration and (another_iteration < run_settings.global_args['max_iterations'])):
+while(another_iteration and (iteration_counter < run_settings.global_args['max_iterations'])):
     logging.info("Performing a round of alignment and variant calling")
     aligned_bam_filename = command_runner.align_sequences(run_settings.global_args['fastq_filenames_list'],
                                    target_ref_filename)
