@@ -231,8 +231,9 @@ def get_variants_from_bam(bam_filename, fasta_filename, threshold = None, min_co
 
     ref_name_to_length_dict = dict(zip(bam_obj.references, bam_obj.lengths))
     #create mapping between base and integer
-    base_to_ind_dict = {'A':0, 'C':1, 'G':2, 'T':3}
-    ind_to_base_array = ['A','C','G','T']
+    #'N' is used for ALL non-ATCG bases
+    base_to_ind_dict = {'A':0, 'C':1, 'G':2, 'T':3, 'N':4}
+    ind_to_base_array = ['A','C','G','T','N']
     #load reference_sequences
     seg_to_seq_string_dict = {}
     for _seqrec in SeqIO.parse(fasta_filename, "fasta"):
@@ -247,11 +248,16 @@ def get_variants_from_bam(bam_filename, fasta_filename, threshold = None, min_co
                                   bam_obj.count_coverage(reference = _ref_name,
                                                          start = 0, end =
                                                          _ref_length)])
-        ref_base_inds = [base_to_ind_dict[_base] for _base in
-                         seg_to_seq_string_dict[_ref_name]]
+        ref_base_inds = []
+        for _base in seg_to_seq_string_dict[_ref_name]:
+          try:
+            ref_base_inds.append(base_to_ind_dict[_base])
+          except Exception:
+            ref_base_inds.append(base_to_ind_dict['N'])
+             
         base_counts_and_ref_ind_array = np.append(base_freqs_array,
-                                                  np.reshape(ref_base_inds,
-                                                             [1,_ref_length]), axis = 0)
+                                                np.reshape(ref_base_inds,
+                                                           [1,_ref_length]), axis = 0)
         for _pos in range(0, base_counts_and_ref_ind_array.shape[1]):
             temp_array = base_counts_and_ref_ind_array[0:4,_pos].transpose()
             if sum(temp_array) < min_coverage:
@@ -376,8 +382,9 @@ def edit_reference_sequences(reference_fasta_filename, edits_df):
         print 'foo'
     print seg_to_seq_ndarray_dict
     for _ref_name, group in edits_df.groupby(['reference']):
-        assert(np.array_equal(np.array(list(seg_to_seq_ndarray_dict[_ref_name][group.loc[:,'position']])),
-                       np.array(list(group.loc[:,"ref_base"].values))))
+        #assertion removed because there will be mismatches between N ands some other non-ACGT bases
+        #assert(np.array_equal(np.array(list(seg_to_seq_ndarray_dict[_ref_name][group.loc[:,'position']])),
+        #               np.array(list(group.loc[:,"ref_base"].values))))
         seg_to_seq_ndarray_dict[_ref_name][np.array(group.loc[:,'position'])] = np.array(group.loc[:,'var_base'])
     edited_fasta_tempfile = tempfile.NamedTemporaryFile(dir =
                                                         run_settings.global_args['temp_dir'],
