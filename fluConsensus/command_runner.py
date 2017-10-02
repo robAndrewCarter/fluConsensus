@@ -248,14 +248,15 @@ def get_variants_from_bam(bam_filename, fasta_filename, threshold = None, min_co
                                   bam_obj.count_coverage(reference = _ref_name,
                                                          start = 0, end =
                                                          _ref_length)])
+
         ref_base_inds = []
         for _base in seg_to_seq_string_dict[_ref_name]:
           try:
             ref_base_inds.append(base_to_ind_dict[_base])
           except Exception:
             ref_base_inds.append(base_to_ind_dict['N'])
-             
         base_counts_and_ref_ind_array = np.append(base_freqs_array,
+
                                                 np.reshape(ref_base_inds,
                                                            [1,_ref_length]), axis = 0)
         for _pos in range(0, base_counts_and_ref_ind_array.shape[1]):
