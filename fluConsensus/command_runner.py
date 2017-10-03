@@ -6,6 +6,7 @@ import pysam
 import numpy as np
 from Bio import SeqIO, SeqRecord, Seq
 import logging
+import regex
 
 
 #Required functions for python script:
@@ -260,21 +261,22 @@ def get_variants_from_bam(bam_filename, fasta_filename, threshold = None, min_co
                                                 np.reshape(ref_base_inds,
                                                            [1,_ref_length]), axis = 0)
         for _pos in range(0, base_counts_and_ref_ind_array.shape[1]):
-            temp_array = base_counts_and_ref_ind_array[0:4,_pos].transpose()
-            if sum(temp_array) < min_coverage:
+            temp_array = base_counts_and_ref_ind_array[0:(base_counts_and_ref_ind_array.shape[0] - 1),_pos].transpose()
+            n_bases = sum(temp_array)
+            if n_bases < min_coverage:
                 continue
             max_args_inds = np.where(temp_array == np.max(temp_array))[0]
             if len(max_args_inds) > 1:
                 continue
             max_args_inds = np.asscalar(max_args_inds)
-            if (max_args_inds == base_counts_and_ref_ind_array[4,_pos]):
+            if (max_args_inds == base_counts_and_ref_ind_array[base_counts_and_ref_ind_array.shape[0] - 1,_pos]):
                 continue
             else:
                 print _pos
                 base_freq = float(temp_array[max_args_inds])/sum(temp_array)
                 if base_freq >= threshold:
-                    array_of_pos_to_change.append([_ref_name, _pos, ind_to_base_array[base_counts_and_ref_ind_array[4,_pos]], ind_to_base_array[max_args_inds]])
-    var_df = pd.DataFrame(array_of_pos_to_change, columns = ['reference', 'position', 'ref_base', 'var_base'])
+                    array_of_pos_to_change.append([_ref_name, _pos, ind_to_base_array[base_counts_and_ref_ind_array[(base_counts_and_ref_ind_array.shape[0] - 1), _pos]], ind_to_base_array[max_args_inds], n_bases, base_freq])
+    var_df = pd.DataFrame(array_of_pos_to_change, columns = ['reference', 'position', 'ref_base', 'var_base', 'count', 'freq'])
     var_df.to_csv(os.path.join(run_settings.global_args['temp_dir'], re.sub("\.[^.]+$", "", bam_filename) + "_variants.tsv"), sep = "\t")
     return(var_df)
 
@@ -379,13 +381,16 @@ def edit_reference_sequences(reference_fasta_filename, edits_df):
     seg_to_seq_ndarray_dict = {}
 
     for _seqrec in SeqIO.parse(reference_fasta_filename, "fasta"):
-        seg_to_seq_ndarray_dict[_seqrec.id] = np.array(list(str(_seqrec.seq)))
+        seg_to_seq_ndarray_dict[_seqrec.id] = np.array(list(str(_seqrec.seq)), dtype = object)
         print 'foo'
-    print seg_to_seq_ndarray_dict
+    print 'edits_df:'
+    print edits_df
     for _ref_name, group in edits_df.groupby(['reference']):
         #assertion removed because there will be mismatches between N ands some other non-ACGT bases
         #assert(np.array_equal(np.array(list(seg_to_seq_ndarray_dict[_ref_name][group.loc[:,'position']])),
         #               np.array(list(group.loc[:,"ref_base"].values))))
+        group['position'] = group['position'].astype(int)
+        group['count'] = group['count'].astype(int)
         seg_to_seq_ndarray_dict[_ref_name][np.array(group.loc[:,'position'])] = np.array(group.loc[:,'var_base'])
     edited_fasta_tempfile = tempfile.NamedTemporaryFile(dir =
                                                         run_settings.global_args['temp_dir'],
@@ -428,3 +433,106 @@ def ensure_indexed_reference_file(fasta_filename):
         except Exception as e:
             sys.exit('Cannot create index for file {}'.format(fasta_filename))
 
+def get_grouped_indels(bam_filename, fasta_filename, threshold):
+    '''
+    This function processes a bam file object and returns a Pandas dataframe of grouped insertions.
+    Insertions are grouped by similarity.
+
+    INPUT:
+        bam_filename: bam filename to identify insertions from
+        fasta_filename: fasta filename containing reference sequences corresponding to bam_filename
+        threshold: mimimum threshold frequency of an insertion to elicit a reference edit.
+
+    OUTPUT:
+        a Pandas dataframe of grouped insertions above threshold frequency with target reference name and position preceding the insertion.
+
+    '''
+    #Make sure bam file exists
+    if not os.path.exists(bam_filename):
+        sys.exit("Bam file {} does not exist".format(bam_filename))
+    if not os.path.exists(fasta_filename):
+        sys.exit("Fasta file {} does not exist".format(fasta_filename))
+    try:
+        bam_obj = pysam.Samfile(bam_filename, 'rb')
+    except Exception:
+        sys.exit("Could not load bam file {}".format(bam_filename))
+    try:
+        seg_to_seq_string_dict = {}
+        for _seqrec in SeqIO.parse(fasta_filename, "fasta"):
+            seg_to_seq_string_dict[_seqrec.id] = str(_seqrec.seq)
+    except Exception:
+        sys.exit("Could not load or parse fasta file {}".format(fasta_filename))
+
+    df_list = []
+
+    for _pileup_column in bam_obj.pileup():
+        ref_name = _pileup_column.reference_name
+        ref_pos = _pileup_column.reference_pos
+        n_reads = _pileup_column.nsegments
+        #print n_reads
+        num_ins = 0
+        ins_dict = {}
+        num_dels = 0
+        del_list = []
+        for _pu_read in _pileup_column.pileups:
+            indel_length = _pu_read.indel
+            if(indel_length < 0):
+                num_dels += 1
+                del_list.append(indel_length)
+            if(indel_length > 0):
+                num_ins += 1
+                ins_str = _pu_read.alignment.query_sequence[_pu_read.query_position + 1:_pu_read.query_position + 1 + indel_length]
+                try:
+                    ins_dict[ins_str] += 1
+                except Exception:
+                    ins_dict[ins_str] = 1
+        if ins_dict:
+            ins_df = pd.DataFrame({'seq': ins_dict.keys(), 'count': ins_dict.values()})
+            grouped_ins_df = group_similar_insertions(ins_df)
+            #print(grouped_ins_df)
+            grouped_ins_df['reference'] = ref_name
+            grouped_ins_df['position'] = ref_pos
+            grouped_ins_df['ref_base'] = seg_to_seq_string_dict[ref_name][ref_pos]
+            grouped_ins_df['var_base'] = grouped_ins_df[['ref_base', 'var_base']].apply(lambda x: ''.join(x), axis = 1)
+            grouped_ins_df['freq'] = grouped_ins_df['count']/float(n_reads)
+            #print grouped_ins_df
+            if (grouped_ins_df['freq'] > threshold).any():
+                df_list.append(grouped_ins_df[grouped_ins_df['freq'] > threshold].loc[:, ['reference', 'position', 'ref_base', 'var_base', 'count', 'freq']])
+                #(grouped_ins_df.loc[grouped_ins_df['freq'].idxmax, 'grouped_str'])
+    if df_list:
+        merged_df = pd.concat(df_list)
+        merged_df['position'] = merged_df['position'].astype(int)
+        merged_df['count'] = merged_df['count'].astype(int)
+        merged_sorted_df = merged_df.sort_values(by=['reference', 'position'], ascending = False)
+    else:
+        merged_sorted_df = pd.DataFrame()
+    return(merged_sorted_df)
+
+def group_similar_insertions(insertion_and_count_df):
+    '''
+    This function takes a Pandas dataframe of insertion strings, merges similar strings, and returns the merged insertions as a Pandas dataframe.
+    Sequences are merged by iterating over the list of strings in order of decreasing count (number of occurences). If the string does not match an already identified string with less than 2 operations different, it is a new grouped insertion. If it does match an existing sequence with less than 2 operations, it is merged with it and the count targets are increased accordingly.
+
+
+    INPUT:
+        insertion_and_count_df: a Pandas dataframe of insertion strings at a site.
+
+    RETURN:
+        a Pandas dataframe of merged/grouped insertions. 
+    '''
+    ins_and_count_sorted_df = insertion_and_count_df.sort_values(by=['count'], ascending=False)
+    grouped_seq_counter_dict = {}
+    for _ind in ins_and_count_sorted_df.index:
+        current_str = ins_and_count_sorted_df.loc[_ind, 'seq']
+        current_count = ins_and_count_sorted_df.loc[_ind, 'count']
+        present = False
+        for _key in grouped_seq_counter_dict.keys():
+            if regex.search("^({})".format(current_str) + '{e<=2}', _key):
+                present = True
+                grouped_seq_counter_dict[_key] += current_count
+                continue
+        if not present:
+            grouped_seq_counter_dict[current_str] = current_count
+    #print grouped_seq_counter_dict
+    grouped_seq_counter_df = pd.DataFrame({'var_base':grouped_seq_counter_dict.keys(), 'count':grouped_seq_counter_dict.values()})
+    return(grouped_seq_counter_df)

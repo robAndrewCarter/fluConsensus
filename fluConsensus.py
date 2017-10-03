@@ -2,6 +2,7 @@
 from fluConsensus import run_settings, command_runner, log_writer
 from Bio import SeqIO
 import sys, subprocess, argparse, os, logging
+import pandas as pd
 
 def parse_arguments():
     parser= argparse.ArgumentParser(description="""This script repeatedly aligns either a
@@ -65,11 +66,17 @@ while(another_iteration and (iteration_counter < run_settings.global_args['max_i
     variants_df = command_runner.get_variants_from_bam(aligned_bam_filename,
                                                        target_ref_filename,
                                          run_settings.global_args['threshold'])
+    print variants_df
+    insertions_df = command_runner.get_grouped_indels(aligned_bam_filename,
+                                                      target_ref_filename,
+                                   run_settings.global_args['threshold'])
+    print insertions_df
+    all_variants_df = pd.concat([variants_df, insertions_df])
     iteration_counter += 1
-    if not variants_df.empty:
+    if not all_variants_df.empty:
         #log_writer.update_variants(variants_df)
-        logging.info("Identified {} variants".format(variants_df.shape[0]))
-        target_ref_filename = command_runner.edit_reference_sequences(target_ref_filename, variants_df)
+        logging.info("Identified {} variants".format(all_variants_df.shape[0]))
+        target_ref_filename = command_runner.edit_reference_sequences(target_ref_filename, all_variants_df)
     else:
         logging.info("No More variants identified")
         another_iteration = False
