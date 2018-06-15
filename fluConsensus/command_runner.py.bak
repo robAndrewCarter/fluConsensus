@@ -55,7 +55,7 @@ def align_sequences(fastq_filename_list, target_reference_filename):
             sys.exit("FAILED: " + " ".join(aln_command + ["\nEXCEPTION:".format(e.output)]))
     
     #Run SAMPE
-    print(run_settings.global_args['temp_dir'])
+    print run_settings.global_args['temp_dir']
     tmpsamfile = tempfile.NamedTemporaryFile(dir=run_settings.global_args['temp_dir'], delete = False)
     tmpsamfile.close()
     if len(aln_filenames) == 2:
@@ -161,7 +161,7 @@ def get_lowercase_seq_coverage(bam_filename, fasta_filename, min_coverage = None
     except Exception:
         sys.exit("Could not load bam file {}".format(bam_filename))
     
-    ref_name_to_length_dict = dict(list(zip(bam_obj.references, bam_obj.lengths)))
+    ref_name_to_length_dict = dict(zip(bam_obj.references, bam_obj.lengths))
 
     seg_to_seq_string_dict = {}
     try:
@@ -171,7 +171,7 @@ def get_lowercase_seq_coverage(bam_filename, fasta_filename, min_coverage = None
         sys.exit("Could not parse " + fasta_filename)
 
     seqrec_list = []
-    for _refname in list(seg_to_seq_string_dict.keys()):
+    for _refname in seg_to_seq_string_dict.keys():
         tolower_inds_list = []
         counts = bam_obj.count_coverage(reference = _refname, start = 0, end = ref_name_to_length_dict[_refname])
         cov_array = np.asarray(counts)
@@ -230,7 +230,7 @@ def get_variants_from_bam(bam_filename, fasta_filename, threshold = None, min_co
     except Exception:
         sys.exit("Could not load bam file {}".format(bam_filename))
 
-    ref_name_to_length_dict = dict(list(zip(bam_obj.references, bam_obj.lengths)))
+    ref_name_to_length_dict = dict(zip(bam_obj.references, bam_obj.lengths))
     #create mapping between base and integer
     #'N' is used for ALL non-ATCG bases
     base_to_ind_dict = {'A':0, 'C':1, 'G':2, 'T':3, 'N':4}
@@ -239,11 +239,12 @@ def get_variants_from_bam(bam_filename, fasta_filename, threshold = None, min_co
     seg_to_seq_string_dict = {}
     for _seqrec in SeqIO.parse(fasta_filename, "fasta"):
         seg_to_seq_string_dict[_seqrec.id] = str(_seqrec.seq)
-        #create empty array to fill with variable positions
-        array_of_pos_to_change = []
+
+	#create empty array to fill with variable positions
+	array_of_pos_to_change = []
 
     #Identify variable positions for editing
-    for _ref_name, _ref_length in ref_name_to_length_dict.items():
+    for _ref_name, _ref_length in ref_name_to_length_dict.iteritems():
         base_freqs_array = np.array([list(_i) for _i in
                                   bam_obj.count_coverage(reference = _ref_name,
                                                          start = 0, end =
@@ -271,7 +272,7 @@ def get_variants_from_bam(bam_filename, fasta_filename, threshold = None, min_co
             if (max_args_inds == base_counts_and_ref_ind_array[base_counts_and_ref_ind_array.shape[0] - 1,_pos]):
                 continue
             else:
-                print(_pos)
+                print _pos
                 base_freq = float(temp_array[max_args_inds])/sum(temp_array)
                 if base_freq >= threshold:
                     array_of_pos_to_change.append([_ref_name, _pos, ind_to_base_array[base_counts_and_ref_ind_array[(base_counts_and_ref_ind_array.shape[0] - 1), _pos]], ind_to_base_array[max_args_inds], n_bases, base_freq])
@@ -320,7 +321,7 @@ def get_bam_stats(bam_filename, fasta_filename, min_coverage = None):
     except Exception:
         sys.exit("Could not load bam file {}".format(bam_filename))
 
-    ref_name_to_length_dict = dict(list(zip(bam_obj.references, bam_obj.lengths)))
+    ref_name_to_length_dict = dict(zip(bam_obj.references, bam_obj.lengths))
     
     seg_to_seq_string_dict = {}
     for _seqrec in SeqIO.parse(fasta_filename, "fasta"):
@@ -328,7 +329,7 @@ def get_bam_stats(bam_filename, fasta_filename, min_coverage = None):
 
     ref_cov_df_list = []
     ref_stats_list = []
-    for _ref_name, _ref_length in ref_name_to_length_dict.items():
+    for _ref_name, _ref_length in ref_name_to_length_dict.iteritems():
         base_freqs_array = np.array([list(_i) for _i in
                                   bam_obj.count_coverage(reference = _ref_name,
                                                          start = 0, end =
@@ -336,7 +337,7 @@ def get_bam_stats(bam_filename, fasta_filename, min_coverage = None):
         cov_df = pd.DataFrame(base_freqs_array.T, columns = ['A', 'C', 'G', 'T'])
         cov_df['cov'] = cov_df.apply(lambda x: sum(x.iloc[[0,1,2,3]]), axis = 1)
         cov_df['ref'] = _ref_name
-        cov_df['pos'] = list(range(0, ref_name_to_length_dict[_ref_name]))
+        cov_df['pos'] = range(0, ref_name_to_length_dict[_ref_name])
         covered_mean_cov = cov_df['cov'][cov_df['cov'] >= min_coverage].mean()
         mean_cov = cov_df['cov'].mean()
         cov_pct = (cov_df['cov'] >= min_coverage).mean()
@@ -381,9 +382,9 @@ def edit_reference_sequences(reference_fasta_filename, edits_df):
 
     for _seqrec in SeqIO.parse(reference_fasta_filename, "fasta"):
         seg_to_seq_ndarray_dict[_seqrec.id] = np.array(list(str(_seqrec.seq)), dtype = object)
-        print('foo')
-    print('edits_df:')
-    print(edits_df)
+        print 'foo'
+    print 'edits_df:'
+    print edits_df
     for _ref_name, group in edits_df.groupby(['reference']):
         #assertion removed because there will be mismatches between N ands some other non-ACGT bases
         #assert(np.array_equal(np.array(list(seg_to_seq_ndarray_dict[_ref_name][group.loc[:,'position']])),
@@ -395,7 +396,7 @@ def edit_reference_sequences(reference_fasta_filename, edits_df):
                                                         run_settings.global_args['temp_dir'],
                                                         delete=False)
     seqrec_list = []
-    for _ref_name, _seq_ndarray in seg_to_seq_ndarray_dict.items():
+    for _ref_name, _seq_ndarray in seg_to_seq_ndarray_dict.iteritems():
         new_seqrec = SeqRecord.SeqRecord(id = _ref_name, seq=
                                              Seq.Seq(''.join(seg_to_seq_ndarray_dict[_ref_name])),
                                              description = '')
@@ -486,7 +487,7 @@ def get_grouped_indels(bam_filename, fasta_filename, threshold):
                 except Exception:
                     ins_dict[ins_str] = 1
         if ins_dict:
-            ins_df = pd.DataFrame({'seq': list(ins_dict.keys()), 'count': list(ins_dict.values())})
+            ins_df = pd.DataFrame({'seq': ins_dict.keys(), 'count': ins_dict.values()})
             grouped_ins_df = group_similar_insertions(ins_df)
             #print(grouped_ins_df)
             grouped_ins_df['reference'] = ref_name
@@ -525,7 +526,7 @@ def group_similar_insertions(insertion_and_count_df):
         current_str = ins_and_count_sorted_df.loc[_ind, 'seq']
         current_count = ins_and_count_sorted_df.loc[_ind, 'count']
         present = False
-        for _key in list(grouped_seq_counter_dict.keys()):
+        for _key in grouped_seq_counter_dict.keys():
             if regex.search("^({})".format(current_str) + '{e<=2}', _key):
                 present = True
                 grouped_seq_counter_dict[_key] += current_count
@@ -533,5 +534,5 @@ def group_similar_insertions(insertion_and_count_df):
         if not present:
             grouped_seq_counter_dict[current_str] = current_count
     #print grouped_seq_counter_dict
-    grouped_seq_counter_df = pd.DataFrame({'var_base':list(grouped_seq_counter_dict.keys()), 'count':list(grouped_seq_counter_dict.values())})
+    grouped_seq_counter_df = pd.DataFrame({'var_base':grouped_seq_counter_dict.keys(), 'count':grouped_seq_counter_dict.values()})
     return(grouped_seq_counter_df)

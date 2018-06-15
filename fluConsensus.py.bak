@@ -66,11 +66,11 @@ while(another_iteration and (iteration_counter < run_settings.global_args['max_i
     variants_df = command_runner.get_variants_from_bam(aligned_bam_filename,
                                                        target_ref_filename,
                                          run_settings.global_args['threshold'])
-    print(variants_df)
+    print variants_df
     insertions_df = command_runner.get_grouped_indels(aligned_bam_filename,
                                                       target_ref_filename,
                                    run_settings.global_args['threshold'])
-    print(insertions_df)
+    print insertions_df
     all_variants_df = pd.concat([variants_df, insertions_df])
     iteration_counter += 1
     if not all_variants_df.empty:
@@ -87,12 +87,12 @@ stats_df.to_csv(os.path.join(run_settings.global_args['temp_dir'], run_settings.
 
 #convert low-coverage regions to lowercase and save to fasta file
 try:
-    print("Just a BAR!")
+    print "Just a BAR!"
     consensus_seqrecs = command_runner.get_lowercase_seq_coverage(aligned_bam_filename,
                                                            target_ref_filename,
                                              run_settings.global_args['min_coverage'])
-    print(consensus_seqrecs)
-    print("FOO and a BAR!")
+    print consensus_seqrecs
+    print "FOO and a BAR!"
     SeqIO.write(consensus_seqrecs, os.path.join(run_settings.global_args['work_dir'],
                                                "".join([run_settings.global_args['sample_name'],
                                                '_consensus_seqs.fa'])),"fasta" )

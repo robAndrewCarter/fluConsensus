@@ -1,5 +1,5 @@
 import logging
-from . import run_settings
+import run_settings
 
 def update_variants(variant_df):
     '''
