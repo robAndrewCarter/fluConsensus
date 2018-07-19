@@ -1,0 +1,9 @@
+*
+!setup.py
+!README.md
+!MANIFEST.in
+!scripts
+!scripts/*
+!fluConsensus
+!fluConsensus/*
+!.gitignore
