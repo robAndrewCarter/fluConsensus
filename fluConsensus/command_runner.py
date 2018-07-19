@@ -1,4 +1,4 @@
-import os, tempfile, sys, subprocess, re    
+import os, tempfile, sys, subprocess, re
 from fluConsensus import run_settings
 from fluConsensus.utils import binner
 import pandas as pd
@@ -44,7 +44,7 @@ def align_sequences(fastq_filename_list, target_reference_filename):
     #align sequences
     aln_filenames = []
     for _filename in fastq_filename_list:
-        tmpfilename = tempfile.NamedTemporaryFile(dir=run_settings.global_args['temp_dir'], delete = False)
+        tmpfilename = tempfile.NamedTemporaryFile(dir=run_settings.global_args['temp_dir'], delete = False, mode="wt")
         tmpfilename.close()
         try:
             aln_command = [binner('bwa'), 'aln', '-f', tmpfilename.name,
@@ -53,10 +53,10 @@ def align_sequences(fastq_filename_list, target_reference_filename):
             aln_filenames.append(tmpfilename.name)
         except subprocess.CalledProcessError as e:
             sys.exit("FAILED: " + " ".join(aln_command + ["\nEXCEPTION:".format(e.output)]))
-    
+
     #Run SAMPE
     print(run_settings.global_args['temp_dir'])
-    tmpsamfile = tempfile.NamedTemporaryFile(dir=run_settings.global_args['temp_dir'], delete = False)
+    tmpsamfile = tempfile.NamedTemporaryFile(dir=run_settings.global_args['temp_dir'], delete = False, mode="wt")
     tmpsamfile.close()
     if len(aln_filenames) == 2:
         try:
@@ -77,7 +77,7 @@ def align_sequences(fastq_filename_list, target_reference_filename):
             sys.exit("FAILED: " + " ".join(samse_command + "\nEXCEPTION: ".format(e.output)))
 
     #Convert to bam
-    tmpbamfilename = tempfile.NamedTemporaryFile(dir=run_settings.global_args['temp_dir'], delete = False)
+    tmpbamfilename = tempfile.NamedTemporaryFile(dir=run_settings.global_args['temp_dir'], delete = False, mode="wt")
     tmpbamfilename.close()
     try:
         samtools_view_command = [binner('samtools'), 'view', "-o", tmpbamfilename.name,
@@ -87,7 +87,7 @@ def align_sequences(fastq_filename_list, target_reference_filename):
         sys.exit("FAILED: " + " ".join(samtools_view_command + "\nEXCEPTION: ".format(e.output)))
 
     #Sort file
-    tmpsortedbamfilename = tempfile.NamedTemporaryFile(dir=run_settings.global_args['temp_dir'], delete = False)
+    tmpsortedbamfilename = tempfile.NamedTemporaryFile(dir=run_settings.global_args['temp_dir'], delete = False, mode="wt")
     tmpsortedbamfilename.close()
     try:
         samtools_sort_command =[binner('samtools'), 'sort', '-o',
@@ -126,7 +126,7 @@ def create_reference_file_from_accessions(accessions_list, sql_database):
 
 
 def get_lowercase_seq_coverage(bam_filename, fasta_filename, min_coverage = None):
-    ''' 
+    '''
     This function reads a bam_filename bam and the corresponding fasta_filename fasta file.
     It converts the sequences from the FASTA file to a combination of uppercase and lowercase characters.
     Lowercase characters are placed wherever the coverage of the corresponding base is less than min_coverage.
@@ -143,10 +143,10 @@ def get_lowercase_seq_coverage(bam_filename, fasta_filename, min_coverage = None
 
     min_coverage: the minimum coverage of a position  in order for it to be considered covered.
     if None, then all positions are considered covered
-    
+
     RETURNS:
 
-    a dict mapping each sequence name to a seqrecord of the corresponding sequence.  
+    a dict mapping each sequence name to a seqrecord of the corresponding sequence.
     The Seq object in the SeqRecord is converted to the upper/lowercase.
     '''
 
@@ -157,7 +157,7 @@ def get_lowercase_seq_coverage(bam_filename, fasta_filename, min_coverage = None
     if min_coverage == None:
         min_coverage = 0
     try:
-        bam_obj = pysam.Samfile(bam_filename, 'rb')
+        bam_obj = pysam.AlignmentFile(bam_filename, 'rb')
     except Exception:
         sys.exit("Could not load bam file {}".format(bam_filename))
     
@@ -226,7 +226,7 @@ def get_variants_from_bam(bam_filename, fasta_filename, threshold = None, min_co
     if not os.path.exists(fasta_filename):
         sys.exit("Fasta file {} does not exist".format(fasta_filename))
     try:
-        bam_obj = pysam.Samfile(bam_filename, 'rb')
+        bam_obj = pysam.AlignmentFile(bam_filename, 'rb')
     except Exception:
         sys.exit("Could not load bam file {}".format(bam_filename))
 
@@ -245,9 +245,9 @@ def get_variants_from_bam(bam_filename, fasta_filename, threshold = None, min_co
     #Identify variable positions for editing
     for _ref_name, _ref_length in ref_name_to_length_dict.items():
         base_freqs_array = np.array([list(_i) for _i in
-                                  bam_obj.count_coverage(reference = _ref_name,
-                                                         start = 0, end =
-                                                         _ref_length)])
+                                  bam_obj.count_coverage(contig = _ref_name,
+                                                         start = 0,
+                                                         stop =_ref_length)])
 
         ref_base_inds = []
         for _base in seg_to_seq_string_dict[_ref_name]:
@@ -294,7 +294,7 @@ def get_bam_stats(bam_filename, fasta_filename, min_coverage = None):
     bam_filename. This has to be included because bam files do not store the
     reference sequences.
 
-    min_coverage: the minimum coverage required for a base to eb considered covered. 
+    min_coverage: the minimum coverage required for a base to eb considered covered.
     If None, then the global min_coverage is used
 
     RETURNS
@@ -316,12 +316,12 @@ def get_bam_stats(bam_filename, fasta_filename, min_coverage = None):
     if not os.path.exists(fasta_filename):
         sys.exit("Fasta file {} does not exist".format(fasta_filename))
     try:
-        bam_obj = pysam.Samfile(bam_filename, 'rb')
+        bam_obj = pysam.AlignmentFile(bam_filename, 'rb')
     except Exception:
         sys.exit("Could not load bam file {}".format(bam_filename))
 
     ref_name_to_length_dict = dict(list(zip(bam_obj.references, bam_obj.lengths)))
-    
+
     seg_to_seq_string_dict = {}
     for _seqrec in SeqIO.parse(fasta_filename, "fasta"):
         seg_to_seq_string_dict[_seqrec.id] = str(_seqrec.seq)
@@ -330,8 +330,8 @@ def get_bam_stats(bam_filename, fasta_filename, min_coverage = None):
     ref_stats_list = []
     for _ref_name, _ref_length in ref_name_to_length_dict.items():
         base_freqs_array = np.array([list(_i) for _i in
-                                  bam_obj.count_coverage(reference = _ref_name,
-                                                         start = 0, end =
+                                  bam_obj.count_coverage(config = _ref_name,
+                                                         start = 0, stop =
                                                          _ref_length)])
         cov_df = pd.DataFrame(base_freqs_array.T, columns = ['A', 'C', 'G', 'T'])
         cov_df['cov'] = cov_df.apply(lambda x: sum(x.iloc[[0,1,2,3]]), axis = 1)
@@ -344,7 +344,7 @@ def get_bam_stats(bam_filename, fasta_filename, min_coverage = None):
         ref_stats_list.append([_ref_name, cov_pct, mean_cov, covered_mean_cov])
     cov_df = pd.concat(ref_cov_df_list, axis = 0)
     stats_df = pd.DataFrame(ref_stats_list, columns = ['ref', 'cov_pct', 'mean_cov', 'covered_mean_cov'])
-    return(cov_df, stats_df) 
+    return(cov_df, stats_df)
 
 def edit_reference_sequences(reference_fasta_filename, edits_df):
     '''
@@ -393,7 +393,7 @@ def edit_reference_sequences(reference_fasta_filename, edits_df):
         seg_to_seq_ndarray_dict[_ref_name][np.array(group.loc[:,'position'])] = np.array(group.loc[:,'var_base'])
     edited_fasta_tempfile = tempfile.NamedTemporaryFile(dir =
                                                         run_settings.global_args['temp_dir'],
-                                                        delete=False)
+                                                        delete=False, mode="wt")
     seqrec_list = []
     for _ref_name, _seq_ndarray in seg_to_seq_ndarray_dict.items():
         new_seqrec = SeqRecord.SeqRecord(id = _ref_name, seq=
@@ -403,8 +403,10 @@ def edit_reference_sequences(reference_fasta_filename, edits_df):
         print(new_seqrec)
     try:
         SeqIO.write(seqrec_list, handle = edited_fasta_tempfile, format = 'fasta')
-    except Exception:
-        sys.exit("Could not write sequences to file {}".format(edited_fasta_tempfile.name))
+    except IOError as err:
+        sys.exit("Could not write sequences to file {}\nIOError: {}".format(edited_fasta_tempfile.name, err))
+    except Exception as err:
+        sys.exit("Exception: {}".format(err))
     edited_fasta_tempfile.close
     return(edited_fasta_tempfile.name)
         
@@ -452,7 +454,7 @@ def get_grouped_indels(bam_filename, fasta_filename, threshold):
     if not os.path.exists(fasta_filename):
         sys.exit("Fasta file {} does not exist".format(fasta_filename))
     try:
-        bam_obj = pysam.Samfile(bam_filename, 'rb')
+        bam_obj = pysam.AlignmentFile(bam_filename, 'rb')
     except Exception:
         sys.exit("Could not load bam file {}".format(bam_filename))
     try:

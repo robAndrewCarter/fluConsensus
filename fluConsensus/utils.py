@@ -1,6 +1,7 @@
-from fluConsensus import run_settings
+"""
+Returns the absolute path for external programs in the external directory
+"""
 import os
-
 def binner(command):
     '''
     This command merely adds the bin_dir folder path to the command and
@@ -12,4 +13,4 @@ def binner(command):
     RETURN:
         the full path to the command within the external directory
     '''
-    return os.path.join(run_settings.global_args['bin_dir'], command)
+    return os.path.join(os.path.dirname(__file__), 'external', command)

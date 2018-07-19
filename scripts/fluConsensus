@@ -65,7 +65,7 @@ while(another_iteration and (iteration_counter < run_settings.global_args['max_i
                                    target_ref_filename)
     variants_df = command_runner.get_variants_from_bam(aligned_bam_filename,
                                                        target_ref_filename,
-                                         run_settings.global_args['threshold'])
+                                         run_settings.global_args['threshold'], run_settings.global_args['min_coverage'])
     print(variants_df)
     insertions_df = command_runner.get_grouped_indels(aligned_bam_filename,
                                                       target_ref_filename,
